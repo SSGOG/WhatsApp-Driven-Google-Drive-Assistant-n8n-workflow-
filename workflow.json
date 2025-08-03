@@ -1,0 +1,187 @@
+{
+  "name": "WhatsApp-Driven Google Drive Assistant",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "start",
+      "name": "Start",
+      "type": "n8n-nodes-base.start",
+      "typeVersion": 1,
+      "position": [100, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "sender": "={{$json[\"From\"]}}",
+        "message": "={{$json[\"Body\"]}}"
+      },
+      "id": "twilio",
+      "name": "Receive WhatsApp",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [300, 300],
+      "credentials": {
+        "twilioApi": "Twilio Sandbox"
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "const msg = $json[\"Body\"].trim();\nconst [command, ...args] = msg.split(/\s+/);\nreturn [{ command: command.toUpperCase(), args }];"
+      },
+      "id": "parser",
+      "name": "Parse Command",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.command}}",
+              "operation": "equal",
+              "value2": "LIST"
+            },
+            {
+              "value1": "={{$json.command}}",
+              "operation": "equal",
+              "value2": "DELETE"
+            },
+            {
+              "value1": "={{$json.command}}",
+              "operation": "equal",
+              "value2": "MOVE"
+            },
+            {
+              "value1": "={{$json.command}}",
+              "operation": "equal",
+              "value2": "SUMMARY"
+            }
+          ]
+        }
+      },
+      "id": "router",
+      "name": "Route Command",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "operation": "list",
+        "driveId": "myDrive",
+        "folderId": "={{$json.args[0]}}"
+      },
+      "id": "listFiles",
+      "name": "List Files",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 1,
+      "position": [900, 150],
+      "credentials": {
+        "googleDriveOAuth2Api": "Google Drive"
+      }
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "fileId": "={{$json.args[1]}}"
+      },
+      "id": "deleteFile",
+      "name": "Delete File",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 1,
+      "position": [900, 250],
+      "credentials": {
+        "googleDriveOAuth2Api": "Google Drive"
+      }
+    },
+    {
+      "parameters": {
+        "operation": "move",
+        "fileId": "={{$json.args[1]}}",
+        "folderId": "={{$json.args[2]}}"
+      },
+      "id": "moveFile",
+      "name": "Move File",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 1,
+      "position": [900, 350],
+      "credentials": {
+        "googleDriveOAuth2Api": "Google Drive"
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Dummy loader, assumes file content exists\nitems[0].json.content = \"Sample extracted content from documents\";\nreturn items;"
+      },
+      "id": "readContent",
+      "name": "Read Files",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [900, 450]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o",
+        "prompt": "Summarize the following file content:\n\n{{$json.content}}\n\nGive bullet points only."
+      },
+      "id": "summariseAI",
+      "name": "Summarise",
+      "type": "n8n-nodes-base.openai",
+      "typeVersion": 1,
+      "position": [1100, 450],
+      "credentials": {
+        "openAIApi": "OpenAI API"
+      }
+    },
+    {
+      "parameters": {
+        "sheetId": "your-sheet-id",
+        "range": "Logs!A1",
+        "valueInputMode": "RAW",
+        "values": "={{ new Date().toISOString() }}, {{$json.command}}, {{$json.args.join(' ')}}"
+      },
+      "id": "logSheet",
+      "name": "Log Action",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 1,
+      "position": [1300, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": "Google Sheets"
+      }
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [[ ["twilio"] ]]
+    },
+    "Receive WhatsApp": {
+      "main": [[ ["parser"] ]]
+    },
+    "Parse Command": {
+      "main": [[ ["router"] ]]
+    },
+    "Route Command": {
+      "main": [[
+        ["listFiles"], ["deleteFile"], ["moveFile"], ["readContent"]
+      ]]
+    },
+    "Summarise": {
+      "main": [[ ["logSheet"] ]]
+    },
+    "List Files": {
+      "main": [[ ["logSheet"] ]]
+    },
+    "Delete File": {
+      "main": [[ ["logSheet"] ]]
+    },
+    "Move File": {
+      "main": [[ ["logSheet"] ]]
+    },
+    "Read Files": {
+      "main": [[ ["summariseAI"] ]]
+    }
+  }
+}
